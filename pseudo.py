@@ -19,14 +19,37 @@
 
 # Some default settings
 
+import ctypes
+import shutil
+import subprocess
+import sys
+
+from platform_support import (
+    IS_WINDOWS,
+    addchain_executable,
+    delete_file,
+    exe_name,
+    find_size_tool,
+    shared_lib_name,
+)
+
 embedded=False  # If True then functions to start and stop a performance counter (cycles or micro-seconds) must be made available
                 # If True no timing executable is created
 cyclesorsecs=True     # if embedded, count cycles otherwise seconds
 arduino=False   # set True if embedded and using arduino for timings
 if arduino :    # If arduino, count microseconds
     cyclesorsecs=False 
-compiler="gcc" # gcc, clang or icx (inlining can sometimes cause icx to hang)
-cyclescounter=True # use Bernstein's cpucycle counter, otherwise just provide timings
+def detect_compiler():
+    if IS_WINDOWS:
+        for cand in ("clang", "gcc"):
+            if shutil.which(cand):
+                return cand
+        print("No suitable C compiler (clang/gcc) found in PATH.")
+        sys.exit(1)
+    return "gcc"
+
+compiler=detect_compiler() # gcc, clang or icx (inlining can sometimes cause icx to hang)
+cyclescounter=not IS_WINDOWS # use Bernstein's cpucycle counter, otherwise just provide timings
 use_rdtsc=False # override cpucycle and use rdtsc directly, x86 only, for better comparison with other implementations
 if use_rdtsc :
     cyclescounter=False
@@ -42,9 +65,32 @@ check=False # run cppcheck on the output
 scale=1 # set to 10 or 100 for faster timing loops. Default to 1
 fully_propagate=False # recommended set to True for Production code
 PSCR=True # Power Side Channel Resistant conditional moves and swaps
+try:
+    ADDCHAIN_BIN = addchain_executable()
+except FileNotFoundError as exc:
+    print(exc)
+    sys.exit(1)
 
-import sys
-import subprocess
+
+def func_prefix():
+    if makestatic:
+        return "static "
+    if IS_WINDOWS:
+        return "MODARITH_API "
+    return ""
+
+makestatic=False
+
+def free_library(lib):
+    handle = getattr(lib, "_handle", None)
+    if not handle:
+        return
+    if IS_WINDOWS:
+        ctypes.windll.kernel32.FreeLibrary(ctypes.c_void_p(handle))
+    else:
+        ctypes.pythonapi.dlclose.argtypes = [ctypes.c_void_p]
+        ctypes.pythonapi.dlclose.restype = ctypes.c_int
+        ctypes.pythonapi.dlclose(ctypes.c_void_p(handle))
 
 # Determine optimal radix
 def getbase(n) :
@@ -211,12 +257,11 @@ def modfsb(n) :
 #modular addition
 def modadd(n,m) :
     str="//Modular addition - reduce less than 2p\n"
-    if makestatic :
-        str+="static "
+    prefix=func_prefix()
     if inline and makestatic :
-        str+="void inline modadd{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
+        str+=prefix+"void inline modadd{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
     else :
-        str+="void modadd{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
+        str+=prefix+"void modadd{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
     if not algorithm :
         str+="\tspint carry;\n"
     for i in range(0,N) :
@@ -232,12 +277,11 @@ def modadd(n,m) :
 #modular subtraction
 def modsub(n,m) :
     str="//Modular subtraction - reduce less than 2p\n"
-    if makestatic :
-        str+="static "
+    prefix=func_prefix()
     if inline and makestatic:
-        str+="void inline modsub{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
+        str+=prefix+"void inline modsub{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
     else :
-        str+="void modsub{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
+        str+=prefix+"void modsub{}(const spint *a,const spint *b,spint *n) {{\n".format(DECOR)
     if not algorithm :
         str+="\tspint carry;\n"
     for i in range(0,N) :
@@ -545,12 +589,11 @@ def modmul(n,m) :
     xcess=N*base-n
     mm=m*2**xcess
     str="// Modular multiplication, c=a*b mod 2p\n"
-    if makestatic :
-        str+="static "
+    prefix=func_prefix()
     if inline and makestatic:
-        str+="void inline modmul{}(const spint *a,const spint *b,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void inline modmul{}(const spint *a,const spint *b,spint *c) {{\n".format(DECOR)
     else :
-        str+="void modmul{}(const spint *a,const spint *b,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void modmul{}(const spint *a,const spint *b,spint *c) {{\n".format(DECOR)
 
     str+="\tdpint t=0;\n"
     if karatsuba :
@@ -591,12 +634,11 @@ def modsqr(n,m) :
     mask=(1<<base)-1
     xcess=N*base-n
     str="// Modular squaring, c=a*a mod 2p\n"
-    if makestatic :
-        str+="static "
+    prefix=func_prefix()
     if inline and makestatic:
-        str+="void inline modsqr{}(const spint *a,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void inline modsqr{}(const spint *a,spint *c) {{\n".format(DECOR)
     else :
-        str+="void modsqr{}(const spint *a,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void modsqr{}(const spint *a,spint *c) {{\n".format(DECOR)
     
     str+="\tdpint t=0;\n"
 
@@ -655,12 +697,11 @@ def modmli(n,m) :
 
 def modcpy() :
     str="//copy\n"
-    if makestatic :
-        str+="static "
+    prefix=func_prefix()
     if inline and makestatic:
-        str+="void inline modcpy{}(const spint *a,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void inline modcpy{}(const spint *a,spint *c) {{\n".format(DECOR)
     else :
-        str+="void modcpy{}(const spint *a,spint *c) {{\n".format(DECOR)
+        str+=prefix+"void modcpy{}(const spint *a,spint *c) {{\n".format(DECOR)
     str+="\tint i;\n"
     str+="\tfor (i=0;i<{};i++) {{\n".format(N)
     str+="\t\tc[i]=a[i];\n"
@@ -682,19 +723,19 @@ def modnsqr() :
 
 # uses https://github.com/mmcloughlin/addchain to create addition chain
 def modpro() :
-    cline="addchain search {} > inv.acc".format(PE)
-    subprocess.call(cline, shell=True)
-    subprocess.call("addchain gen inv.acc > ac.txt", shell=True)
-    subprocess.call("rm inv.acc",shell=True)
+    with open("inv.acc","w") as inv_file:
+        subprocess.run([ADDCHAIN_BIN, "search", f"{PE}"], stdout=inv_file, check=True)
+    with open("ac.txt","w") as ac_file:
+        subprocess.run([ADDCHAIN_BIN, "gen", "inv.acc"], stdout=ac_file, check=True)
+    delete_file("inv.acc")
 
     f=open('ac.txt')
     lines=f.readlines()
     info=lines[0].split()
     ntmps=len(info)-1
     str="//Calculate progenitor - use optimal addition chain\n"
-    if makestatic :
-        str+="static "
-    str+="void modpro{}(const spint *w,spint *z) {{\n".format(DECOR)
+    prefix=func_prefix()
+    str+=prefix+"void modpro{}(const spint *w,spint *z) {{\n".format(DECOR)
     str+="\tspint x[{}];\n".format(N)
 
     for i in range(0,ntmps) :
@@ -713,15 +754,14 @@ def modpro() :
             str+="\tmodnsqr{}({},{});\n".format(DECOR,info[1],int(info[3]))
     str+="}\n"
     f.close()
-    subprocess.call("rm ac.txt",shell=True)    
+    delete_file("ac.txt")    
     return str
 
 #modular inversion
 def modinv() :
     str="//calculate inverse, provide progenitor h if available, NULL if not\n"
-    if makestatic :
-        str+="static "
-    str+="void modinv{}(const spint *x,const spint *h,spint *z) {{\n".format(DECOR)
+    prefix=func_prefix()
+    str+=prefix+"void modinv{}(const spint *x,const spint *h,spint *z) {{\n".format(DECOR)
     if PM1D2>1 :
         str+="\tint i;\n"
     str+="\tspint s[{}];\n".format(N)
@@ -765,9 +805,8 @@ def modqr() :
 #modular square root
 def modsqrt() :
     str="//Modular square root, provide progenitor h if available, NULL if not\n"
-    if makestatic :
-        str+="static "
-    str+="void modsqrt{}(const spint *x,const spint *h,spint *r) {{\n".format(DECOR)
+    prefix=func_prefix()
+    str+=prefix+"void modsqrt{}(const spint *x,const spint *h,spint *r) {{\n".format(DECOR)
     if PM1D2>1 :
         str+="\tint k;\n"
         str+="\tspint t[{}];\n".format(N)
@@ -883,9 +922,8 @@ def modint() :
 # convert to internal form
 def nres(n) :
     str="//Convert m to internal form, n=nres(m) \n"
-    if makestatic :
-        str+="static "
-    str+="void nres{}(const spint *m,spint *n) {{\n".format(DECOR)
+    prefix=func_prefix()
+    str+=prefix+"void nres{}(const spint *m,spint *n) {{\n".format(DECOR)
     str+="\tint i;\n"
     str+="\tfor (i=0;i<{};i++) {{\n".format(N)
     str+="\t\tn[i]=m[i];\n"
@@ -896,9 +934,8 @@ def nres(n) :
 #convert back to integer form (and do final subtract)
 def redc(n) :
     str="//Convert n back to normal form, m=redc(n) \n"
-    if makestatic :
-        str+="static "
-    str+="void redc{}(const spint *n,spint *m) {{\n".format(DECOR)
+    prefix=func_prefix()
+    str+=prefix+"void redc{}(const spint *n,spint *m) {{\n".format(DECOR)
     str+="\tint i;\n"
     str+="\tfor (i=0;i<{};i++) {{\n".format(N)
     str+="\t\tm[i]=n[i];\n"
@@ -1304,6 +1341,11 @@ def header() :
     print("//Python Script by Mike Scott (Technology Innovation Institute, UAE, 2025)\n")
     print("#include <stdio.h>")
     print("#include <stdint.h>\n")
+    print("#ifdef _WIN32")
+    print("#define MODARITH_API __declspec(dllexport)")
+    print("#else")
+    print("#define MODARITH_API")
+    print("#endif\n")
     print("#define sspint int{}_t".format(WL))
     print("#define spint uint{}_t".format(WL))
     if WL==64 :
@@ -1597,6 +1639,7 @@ DECOR=""
 modulus=p
 
 import random
+delete_file("test.c")
 with open('test.c', 'w') as f:
     with redirect_stdout(f):
         header()
@@ -1605,11 +1648,13 @@ f.close()
 
 #maybe -march=rv64gc for RISC-V
 #maybe -fPIC
-subprocess.call(compiler + " -march=native -mtune=native -O3 -shared -o test.so test.c", shell=True)
+native_opts = "" if IS_WINDOWS else " -march=native -mtune=native"
+test_lib = shared_lib_name("test")
+delete_file(test_lib)
+subprocess.run(compiler + f"{native_opts} -O3 -shared -o {test_lib} test.c", shell=True, check=True)
 
-import ctypes
 from ctypes import *
-lib = ctypes.CDLL('./test.so')
+lib = ctypes.CDLL('./'+test_lib)
 
 if WL==16 :
     lib.modadd.argtypes = [POINTER(c_uint16),POINTER(c_uint16),POINTER(c_uint16)]
@@ -1738,8 +1783,9 @@ for i in range(0,1000) :
         #print(hex(rz))
         exit(1)
 print("Passed - OK")
-subprocess.call("rm test.c", shell=True)
-subprocess.call("rm test.so", shell=True)
+free_library(lib)
+delete_file("test.c")
+delete_file(test_lib)
 
 makestatic=True
 random.seed(42)
@@ -1748,7 +1794,7 @@ rb=random.randint(0,modulus-1)
 rs=random.randint(0,modulus-1)
 ri=random.randint(0,modulus-1)
 #if embedded :
-subprocess.call("rm time.c", shell=True)
+delete_file("time.c")
 
 with open('time.c', 'w') as f:
     with redirect_stdout(f):
@@ -1782,11 +1828,15 @@ f.close()
 #maybe -march=rv64gc for RISC-V
 #maybe -fPIC
 if not embedded :   # Create timing program for this processor
+    time_exe = exe_name("time")
     if cyclescounter :
-        subprocess.call(compiler + " -march=native -mtune=native -O3 time.c -lcpucycles -o time", shell=True)
+        subprocess.run(compiler + f"{native_opts} -O3 time.c -lcpucycles -o {time_exe}", shell=True, check=True)
     else :
-        subprocess.call(compiler + " -march=native -mtune=native -O3 time.c -o time", shell=True)
-    print("For timings run ./time")
+        subprocess.run(compiler + f"{native_opts} -O3 time.c -o {time_exe}", shell=True, check=True)
+    if IS_WINDOWS :
+        print(f"For timings run {time_exe}")
+    else :
+        print(f"For timings run ./{time_exe}")
     #subprocess.call("rm time.c", shell=True)
 else :
     print("Timing code is in file time.c")
@@ -1800,25 +1850,35 @@ with open('field.c', 'w') as f:
         functions()
 f.close()
 
-subprocess.call(compiler+" -O3 -c field.c",shell=True)
-subprocess.call("size field.o > size.txt",shell=True)
+size_cmd = find_size_tool()
+if size_cmd :
+    subprocess.call(compiler+f"{native_opts} -O3 -c field.c",shell=True)
+    with open("size.txt","w") as size_out :
+        subprocess.call(size_cmd+["field.o"],stdout=size_out)
 
-f=open('size.txt')
-lines=f.readlines()
-info=lines[1].split()
+    try :
+        with open('size.txt') as f :
+            lines=f.readlines()
+        info=lines[1].split()
+        print("Code size using -O3 = ",info[0])
+    except (OSError, IndexError) :
+        print("Unable to determine code size using -O3")
 
-print("Code size using -O3 = ",info[0])
+    subprocess.call(compiler+f"{native_opts} -Os -c field.c",shell=True)
+    with open("size.txt","w") as size_out :
+        subprocess.call(size_cmd+["field.o"],stdout=size_out)
 
-subprocess.call(compiler+" -Os -c field.c",shell=True)
-subprocess.call("size field.o > size.txt",shell=True)
-
-f=open('size.txt')
-lines=f.readlines()
-info=lines[1].split()
-
-print("Code size using -Os = ",info[0])
-subprocess.call("rm size.txt",shell=True)     
-subprocess.call("rm field.o",shell=True)  
+    try :
+        with open('size.txt') as f :
+            lines=f.readlines()
+        info=lines[1].split()
+        print("Code size using -Os = ",info[0])
+    except (OSError, IndexError) :
+        print("Unable to determine code size using -Os")
+    delete_file("size.txt")     
+    delete_file("field.o")  
+else :
+    print("Skipping code size measurement (size/llvm-size not found)")
 
 if decoration :
     if noname :
@@ -1834,7 +1894,11 @@ with open('field.c', 'w') as f:
 f.close()
 
 if formatted :
-    subprocess.call("clang-format -i field.c", shell=True)  # tidy up the format
+    clang_fmt = shutil.which("clang-format")
+    if clang_fmt :
+        subprocess.call(f"\"{clang_fmt}\" -i field.c", shell=True)
+    else :
+        print("clang-format not found - skipping formatting step")
 
 if check:
     subprocess.call("cppcheck --enable=all --addon=misc  --suppress=unusedFunction --suppress=missingIncludeSystem --suppress=checkersReport field.c", shell=True) 

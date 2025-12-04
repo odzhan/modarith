@@ -9,6 +9,7 @@
 // clang -O3 -march=native -mtune=native testcurve.c weierstrass.c -lcpucycles -o testcurve
 
 #include <stdio.h>
+#include <stdint.h>
 #include "curve.h"
 
 #define COUNT_CLOCKS
@@ -18,6 +19,21 @@
 
 #ifdef USE_RDTSC
 #include <x86intrin.h>
+#elif defined(_WIN32)
+#include <windows.h>
+static LARGE_INTEGER perf_freq;
+static int perf_freq_ready;
+static uint64_t cpucycles(void)
+{
+    LARGE_INTEGER now;
+    if (!perf_freq_ready)
+    {
+        QueryPerformanceFrequency(&perf_freq);
+        perf_freq_ready = 1;
+    }
+    QueryPerformanceCounter(&now);
+    return (uint64_t)((now.QuadPart * 1000000000ULL) / perf_freq.QuadPart);
+}
 #else
 #include <cpucycles.h>
 #endif

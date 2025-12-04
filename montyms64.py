@@ -41,7 +41,6 @@ use_rdtsc=False # use rdtsc directly, x86 only, for better comparison with other
 decoration=False # decorate function names to avoid name clashes
 formatted=True # pretty up the final output
 inline=True # consider encouraging inlining
-rmdel="rm"  # rm or del depending on shell
 generic=True # set to False if algorithm is known in advance, in which case modadd and modsub can be faster - see https://eprint.iacr.org/2017/437. Set False for RFC7748 implementation.
 allow_asr=True # Allow Arithmetic Shift Right. Maybe set to False to silence MISRA warnings
 check=False # run cppcheck on the output
@@ -49,8 +48,16 @@ scale=1 # set to 10 or 100 for faster timing loops. Default to 1
 fully_propagate=False # recommended set to True for Production code
 PSCR=True # Power Side Channel Resistant conditional moves and swaps
 
-import sys
 import subprocess
+import sys
+
+from platform_support import addchain_executable, delete_file
+
+try:
+    ADDCHAIN_BIN = addchain_executable()
+except FileNotFoundError as exc:
+    print(exc)
+    sys.exit(1)
 
 def ispowerof2(n) :
     if (n & (n-1) == 0) and n>0 :
@@ -1255,10 +1262,11 @@ def modnsqr() :
 
 # uses https://github.com/mmcloughlin/addchain to create addition chain
 def modpro() :
-    cline="addchain search {} > inv.acc".format(PE)
-    subprocess.call(cline, shell=True)
-    subprocess.call("addchain gen inv.acc > ac.txt", shell=True)
-    subprocess.call(rmdel+" inv.acc",shell=True)
+    with open("inv.acc","w") as inv_file:
+        subprocess.run([ADDCHAIN_BIN, "search", f"{PE}"], stdout=inv_file, check=True)
+    with open("ac.txt","w") as ac_file:
+        subprocess.run([ADDCHAIN_BIN, "gen", "inv.acc"], stdout=ac_file, check=True)
+    delete_file("inv.acc")
 
     f=open('ac.txt')
     lines=f.readlines()
@@ -1287,7 +1295,7 @@ def modpro() :
             #str+="\t}\n"
     str+="}\n"
     f.close()
-    subprocess.call(rmdel+" ac.txt",shell=True)    
+    delete_file("ac.txt")    
     return str
 
 def modinv() :
@@ -2176,7 +2184,7 @@ rb=random.randint(0,modulus-1)
 rs=random.randint(0,modulus-1)
 ri=random.randint(0,modulus-1)
 
-subprocess.call(rmdel+" time.c", shell=True)
+delete_file("time.c")
 
 with open('time.c', 'w') as f:
     with redirect_stdout(f):

@@ -4,11 +4,14 @@
 # Mike Scott 3rd September 2024
 # TII
 #
-import sys
-import subprocess
 import os.path
+import subprocess
+import sys
 
-microsoft=False  # set to True if using Microsoft C 64-bit compiler
+from platform_support import IS_WINDOWS, python_cmd
+
+microsoft=IS_WINDOWS  # set to True if using Microsoft C 64-bit compiler
+PYTHON = python_cmd()
 
 # is it a lucky trinomial?
 def trinomial(p,base) :
@@ -178,14 +181,14 @@ radix=0
 
 if WL==64 and microsoft :
     if prime_type==PSEUDO :
-        radix=subprocess.run("python3 pseudoms64.py "+curve, shell=True).returncode
+        radix=subprocess.run([PYTHON,"pseudoms64.py",curve]).returncode
     if prime_type==MONTY :
-        radix=subprocess.run("python3 montyms64.py "+curve, shell=True).returncode
+        radix=subprocess.run([PYTHON,"montyms64.py",curve]).returncode
 else :
     if prime_type==PSEUDO :
-        radix=subprocess.run("python3 pseudo.py "+str(WL)+" "+curve, shell=True).returncode
+        radix=subprocess.run([PYTHON,"pseudo.py",str(WL),curve]).returncode
     if prime_type==MONTY :
-        radix=subprocess.run("python3 monty.py "+str(WL)+" "+curve, shell=True).returncode
+        radix=subprocess.run([PYTHON,"monty.py",str(WL),curve]).returncode
 
 if radix<3 :
     print("Bad curve")
@@ -294,9 +297,9 @@ with open('point.h', 'w') as f:
 order="00"+str(q) # mark as group order by prefixing with 00
 
 if WL==64 and microsoft :
-    subprocess.run("python3 montyms64.py "+order, shell=True)
+    subprocess.run([PYTHON,"montyms64.py",order])
 else :
-    subprocess.run("python3 monty.py "+str(WL)+" "+order, shell=True)
+    subprocess.run([PYTHON,"monty.py",str(WL),order])
 
 print("field code is in field.c")
 print("curve definition is in curve.c")

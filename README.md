@@ -22,24 +22,33 @@ Also in the path must be the very useful utility addchain
 
 For accurate timings across a range of architectures for the C code, install Dan Bernstein's libcpucycles utility from https://cpucycles.cr.yp.to/ . It may be necessary to run *ldconfig*.
 
+## Windows support
+
+The Python generators now auto-detect Windows and choose sensible defaults (for example `clang` instead of `gcc`, `.exe` suffixes, and `.dll` shared libraries). To build on Windows:
+
+- Install Python 3 and either the LLVM toolchain (recommended) or the Visual Studio C/C++ build tools and ensure the compiler is on your `PATH`.
+- Build `addchain` from https://github.com/mmcloughlin/addchain and place `addchain.exe` somewhere on `PATH`. The scripts automatically look for the `.exe` suffix.
+- `libcpucycles` is optional on Windows; if it is absent the timing harness falls back to the standard C `clock()` API.
+- When the documentation below refers to `./time` or other executables, run the generated `.exe` directly (for example `time.exe`).
+
 # Quick start
 
 For a quick start copy the files from here into a working directory, and try
 
 	python3 pseudo.py 64 2**255-19
-	./time
+	./time    # use time.exe on Windows
 
 Then 64-bit code for the suggested modulus is generated and tested. An executable that times important functions will be created if the platform allows it. The standalone C timing code is output to *time.c*, and code for production use is output to *field.c*
 
 If your shell interprets an asterix, try placing a backslash before each asterix, or
 
 	python3 pseudo.py 64 "2**255-19"
-	./time
+	./time    # use time.exe on Windows
 
 For Rust 
 
 	python3 pseudo_rust.py 64 2**255-19
-	./time
+	./time    # use time.exe on Windows
 
 In this case the output is directed to files *time.rs* and *field.rs*
 
@@ -126,7 +135,7 @@ Support for standard SHA2 and SHA3 hashing algorithms is provided in *hash.c* an
 
 	python3 curve.py 64 ED25519
 	gcc -O2 testcurve.c edwards.c -lcpucycles -o testcurve
-	./testcurve
+	./testcurve    # run testcurve.exe on Windows
 
 Note that this intermediate API only provides the elliptic curve functionality. A higher level algorithm API (like that provided for ed448 EdDSA signature) would use this API while itself providing additional algorithm specific random number and hashing functionality. It may also use the *monty.py* script to generate code to perform arithmetic modulo the prime group order, if so required by the algorithm.
 
@@ -134,13 +143,13 @@ Note that this intermediate API only provides the elliptic curve functionality. 
 
 	python3 curve.py 64 ED448
 	gcc -O2 ed448.c edwards.c hash.c -o ed448
-	./ed448
+	./ed448    # run ed448.exe on Windows
 
 ## Quickstart 3 (ECDSA):-
 
 	python3 curve.py 64 NIST256
 	gcc -O2 nist256.c weierstrass.c hash.c -o nist256
-	./nist256
+	./nist256    # run nist256.exe on Windows
 
 # Rust version
 
@@ -217,8 +226,6 @@ A short python script *parse.py* is provided which converts the JSON formatted t
 
 Inexcusably the Microsoft C 64 bit compiler MSVC does not support 128-bit integers (BTW you really should be using *clang-cl*). However relatively efficient implementation is still possible with MSVC using special intrinsic functions.
 
-The scripts *pseudoms64.py* and *montyms64.py* generate code which uses these intrinsics. By default x86-64 intrinsics are used. But generated code can also be configured for ARM64, or indeed any architecture which at a minimum allows access to the top 64 bits of a 128-bit product.
-
-A minor change is also required in the *curve.py* script where indicated.  
+The scripts *pseudoms64.py* and *montyms64.py* generate code which uses these intrinsics. By default x86-64 intrinsics are used. But generated code can also be configured for ARM64, or indeed any architecture which at a minimum allows access to the top 64 bits of a 128-bit product. The *curve.py* driver now switches to these scripts automatically when it detects a Windows/MSVC environment.  
 
 

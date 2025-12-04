@@ -4,9 +4,13 @@
 # Mike Scott 3rd September 2024
 # TII
 #
-import sys
-import subprocess
 import os.path
+import subprocess
+import sys
+
+from platform_support import python_cmd
+
+PYTHON = python_cmd()
 
 # is it a lucky trinomial?
 def trinomial(p,base) :
@@ -168,9 +172,9 @@ if p==0:
 
 radix=0
 if prime_type==PSEUDO :
-    radix=subprocess.run("python3 pseudo_rust.py "+str(WL)+" "+curve, shell=True).returncode
+    radix=subprocess.run([PYTHON,"pseudo_rust.py",str(WL),curve]).returncode
 if prime_type==MONTY :
-    radix=subprocess.run("python3 monty_rust.py "+str(WL)+" "+curve, shell=True).returncode
+    radix=subprocess.run([PYTHON,"monty_rust.py",str(WL),curve]).returncode
 
 if radix<3 :
     print("Bad curve")
@@ -312,7 +316,7 @@ with open('point.rs', 'w') as f:
 
 order="00"+str(q) # mark as group order by prefixing with 00
 
-subprocess.run("python3 monty_rust.py "+str(WL)+" "+order, shell=True)
+subprocess.run([PYTHON,"monty_rust.py",str(WL),order])
 
 print("field code is in field.rs")
 print("curve definition is in curve.rs")

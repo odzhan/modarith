@@ -13,12 +13,16 @@
 #
 # See main program below for corner case generation. Add your own!
 #
+import os
 import random
-from contextlib import redirect_stdout
-import sys
 import subprocess
+import sys
+from contextlib import redirect_stdout
 
-compiler="gcc"  # choose C compiler
+from platform_support import IS_WINDOWS, exe_name, python_cmd
+
+compiler="clang" if IS_WINDOWS else "gcc"  # choose C compiler
+PYTHON = python_cmd()
 
 def replacefromfile(namefile,oldtext,newfile):
     f = open(namefile,'r')
@@ -313,14 +317,14 @@ if c>=2**(WL-5) :
 
 if PM:
     if WL==32: 
-        subprocess.call("python3 pseudo.py 32 "+prime,shell=True)
+        subprocess.call([PYTHON,"pseudo.py","32",prime])
     else :
-        subprocess.call("python3 pseudo.py 64 "+prime,shell=True)
+        subprocess.call([PYTHON,"pseudo.py","64",prime])
 else :
     if WL==32: 
-        subprocess.call("python3 monty.py 32 "+prime,shell=True)
+        subprocess.call([PYTHON,"monty.py","32",prime])
     else :
-        subprocess.call("python3 monty.py 64 "+prime,shell=True)
+        subprocess.call([PYTHON,"monty.py","64",prime])
 
 replacefromfile("edge.c","@field@","field.c")
 
@@ -358,7 +362,9 @@ with open('edge.txt', 'w') as f:
     f.close()
 
 # Compile and run C code to check outputs against generated test vectors
-subprocess.call(compiler + " -O2 edge.c -o edge", shell=True)
-subprocess.call("./edge", shell=True)
+edge_exe = exe_name("edge")
+subprocess.call(compiler + f" -O2 edge.c -o {edge_exe}", shell=True)
+run_path = os.path.join(".", edge_exe)
+subprocess.call([run_path])
 
 replaceback("edge.c","@field@","field.c") # put it back the way you found it!
